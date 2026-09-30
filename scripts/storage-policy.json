@@ -1,0 +1,8 @@
+{
+  "modules": [
+    "nvme", "xhci_pci", "ahci", "usb_storage", "sd_mod", "uas", "ata_piix",
+    "xhci_hcd", "ehci_pci", "ehci_hcd", "ohci_pci", "ohci_hcd", "uhci_hcd",
+    "virtio_pci", "virtio_blk", "virtio_scsi"
+  ],
+  "controllers": ["nvme", "ahci", "ata_piix", "usb_storage", "uas", "virtio_blk", "virtio_scsi"]
+}

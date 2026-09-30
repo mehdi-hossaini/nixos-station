@@ -1,0 +1,24 @@
+{
+  "provenance": {
+    "generator": "a7eee49e6c39edeb2026b1d5d3064284ecfacbe00dbe58037297fa1ee62db361",
+    "schema": 1,
+    "sources": {
+      "kernel": "/nix/store/8wfqdv17fg65v9b4vi18y7vsfc2p1qq4-linux-6.18.53.tar.xz",
+      "libdrm": "/nix/store/zzh3x1r16i1h7d685hgx5zmfki0phmd4-libdrm-2.4.133.tar.xz",
+      "mesa": "/nix/store/dxfn3fqadh1xl8h419h2ckd3giij01fg-source",
+      "nvidia": "/nix/store/262nj946r59dq46jkb9l5bqfy77bjf8n-NVIDIA-Linux-x86_64-595.71.05.run"
+    },
+    "stack": {
+      "kernel": "6.18.53",
+      "mesa": "26.1.8",
+      "niri": "26.04",
+      "nixpkgs": "f5c082a40f7571c266e74e80ae2e68aadd8a9fc7",
+      "nvidia": "595.71.05",
+      "policy": 1
+    }
+  },
+  "sha256": {
+    "graphics-support.json": "6bbc169f1d61ed6d1fdc759a717a4569baa8ddecd1aea7c67334b5b78f330749",
+    "supported-gpus.json": "0cbe4ab1091dfd949adcddc84fbd018e0d7bf05af289f8189a7ba63add43de8a"
+  }
+}

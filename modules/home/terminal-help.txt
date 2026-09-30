@@ -1,0 +1,98 @@
+WORKSTATION QUICK START
+
+Use arrows or Page Up/Down to scroll this guide; q closes it.
+Open it again with workstation-help, Super+Shift+F1, or Quick Start in Fuzzel.
+In the preview VM, desktop shortcuts use Alt instead of Super.
+
+START A PROJECT
+  Keep projects in ~/Projects: this directory survives reboot.
+  cproj              Search folders directly inside ~/Projects; Enter opens one.
+  cproj name         Start the picker with a search; Esc leaves you where you are.
+  v                  Open Neovim here, then Ctrl+P to find a file.
+  y                  Browse files in Yazi; q returns your shell to that folder.
+                     Text/archives preview by default; media show file details.
+  z name             Jump to a previously visited directory by part of its name.
+  direnv allow       Approve a trusted project's .envrc to load its tools.
+
+COMPLETION AND COMMANDS
+  Pause while typing to see command flags, paths and contextual suggestions.
+  Tab inserts a candidate; Down enters the menu; Enter accepts a selection.
+  Ctrl+R searches shell history. Ctrl+C cancels the current command/menu.
+  Ctrl+X, then Ctrl+E edits your current command in Neovim.
+    Save and quit to return it to the prompt; review it before pressing Enter.
+  Ctrl+A / Ctrl+E     Move to the start / end of the command.
+  Ctrl+U / Ctrl+W     Remove text before the cursor / the previous word.
+
+TERMINAL WINDOWS
+  Super+Return       New terminal with its own shell.
+  Ctrl+Shift+N       New terminal in this terminal's current shell directory.
+  Ctrl+Shift+C / V   Copy selected text / paste from the system clipboard.
+  Ctrl+plus / minus  Increase / decrease font size; Ctrl+0 resets it.
+  Ctrl+Shift+R       Search terminal output (separate from command history).
+  Shift+Page Up/Down Scroll terminal output.
+  Closing a terminal ends its shell; running jobs may end with it.
+
+NEOVIM
+  i                  Enter insert mode to type; Esc returns to normal mode.
+  :w                 Save. :q quits; :wq saves and quits.
+  :q!                Discard unsaved changes and quit this window.
+  Ctrl+P             Search files below the current directory.
+  Space, /           Search text in those files (type into the search box).
+  Space, b           Switch between open files.
+  Space, w           Save the current file.
+  Space, y           Copy to the system clipboard (also works on a selection).
+  Space, p           Paste from the system clipboard.
+  F1                 Open this guide read-only; :q returns to your file.
+  :Tutor             Start Neovim's interactive beginner tutorial.
+
+  With a language server supplied by the project:
+    Ctrl+Space       Request completion in insert mode.
+    Ctrl+N / Ctrl+P  Select next / previous completion.
+    Ctrl+Y / Ctrl+E  Accept / dismiss completion.
+    gd / Ctrl+O      Go to definition / return.
+    K                Documentation for the item under the cursor.
+    Space, r, n      Rename a symbol.
+    Space, c, a      Available code actions.
+    Space, f         Format the current file.
+    Space, e         Explain the diagnostic under the cursor.
+  Completion also appears after language-server trigger characters.
+  Without a language server, Ctrl+N / Ctrl+P completes words from buffers.
+  Nix support is included; other languages use each project's development shell.
+
+DESKTOP
+  Super+F1           Show shortcut hints.
+  Super+D            Search applications.
+  Super+E / B / N    Files / Firefox / network settings.
+  Super+Shift+B      Read battery percentage/status; close its terminal with Super+Q.
+  Super+M            Restore the most recent expired notification (history holds 50).
+  Super+Shift+M      Dismiss the current notification.
+  Super+Ctrl+M       Choose an action on the current notification with Fuzzel.
+  Alt+Shift          Switch selected/US layout groups when the selected layout is non-US.
+  Ordinary notifications remain visible for 15 seconds; critical ones stay.
+  Set notificationTimeout to 0 in installation.json to disable ordinary expiry.
+  Super+arrows       Move focus; add Shift to move a window/column.
+  Super+1..5         Code / Web / Review / Communicate / Lab workspaces.
+  Super+F            Maximize a column; Super+Shift+F toggles fullscreen.
+  Super+Space        Workspace overview.
+  Super+Escape       Lock. Super+Shift+E opens the logout confirmation.
+  Print              Select a screenshot area.
+  Click volume on the bar to choose audio devices; network opens nmtui by default.
+  With graphical network controls enabled, use the tray menu for Wi-Fi and
+  click the network label for the connection editor. Super+N still opens nmtui.
+
+WHAT SURVIVES REBOOT
+  ~/Projects, Documents, Downloads, Pictures and configured app state persist.
+  ~/Scratch and unlisted home-directory state are disposable.
+  Shell history and editor recovery persist, but open shell sessions do not.
+  No automatic remote backup is enabled until you configure one.
+  Store important files in the persistent directories and keep an external backup.
+
+SYSTEM CHANGES
+  The configuration is in ~/Projects/workstation after installation.
+  See README.md there for the update, check, build and boot workflow.
+  Configuration files managed by Nix are generated; edit the repository source.
+  Run nix develop in the repository for linters and maintenance tools.
+  Containers, rich previews and graphical network controls are opt-in.
+  Obtain is also optional: obtain --help, obtain add URL, obtain list.
+  Apps installed through Obtain may need their own persistent data paths.
+  See docs/philosophy.md.

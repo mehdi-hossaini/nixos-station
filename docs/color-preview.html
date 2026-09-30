@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workstation palette comparison</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.6 system-ui, sans-serif; background: var(--palette-canvas); color: var(--palette-body); }
+    * { box-sizing: border-box; }
+    body { max-width: 1240px; margin: auto; padding: 32px; }
+    h1, h2, h3 { color: var(--palette-bright); line-height: 1.3; }
+    h1 { font-size: 2rem; margin-bottom: 12px; }
+    h2 { font-size: 1.25rem; }
+    h3 { font-size: 1rem; margin-top: 0; }
+    p { max-width: 80ch; }
+    a { color: var(--palette-focus); text-underline-offset: 3px; }
+    a:focus-visible, input:focus-visible { outline: 2px solid var(--palette-focus); outline-offset: 4px; }
+    label { display: inline-block; margin: 12px 0 20px; cursor: pointer; }
+    input { margin-right: 8px; accent-color: var(--palette-focus); }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    #grayscale:checked ~ .comparison { filter: grayscale(1); }
+    .panel { --muted: #737373; --border: #606a73; --pane: var(--palette-inactive); --selected: #333c43; --launcher-selected: #2a3239; --selected-match: var(--palette-teal); --focus-width: 1px; }
+    .revised { --muted: var(--palette-muted); --border: var(--palette-border); --pane: var(--palette-border); --selected: var(--palette-selection); --launcher-selected: var(--palette-selection); --selected-match: var(--palette-selectedMatch); --focus-width: 2px; }
+    .canvas { background: var(--palette-base); padding: 18px; border: var(--focus-width) solid var(--palette-focus); min-height: 440px; }
+    .editor { font: 14px/1.9 "DejaVu Sans Mono", monospace; white-space: pre; overflow-x: auto; padding: 12px 0; }
+    .ln { color: var(--muted); padding-right: 18px; }
+    .statement { color: var(--palette-mauve); }
+    .string, .success { color: var(--palette-success); }
+    .constant, .warning { color: var(--palette-warning); }
+    .comment { color: var(--palette-muted); }
+    .identifier { color: var(--palette-teal); }
+    .text-selection { background: var(--selected); }
+    .revised .text-selection { color: var(--palette-bright); }
+    .split { height: 1px; background: var(--pane); margin: 12px 0 20px; }
+    .popup { background: var(--palette-raised); border: 1px solid var(--border); padding: 16px; }
+    .launcher { background: var(--palette-base); margin-top: 20px; }
+    .search { margin-bottom: 12px; color: var(--palette-focus); }
+    .result { padding: 8px 12px; }
+    .result.selected { background: var(--launcher-selected); color: var(--palette-bright); }
+    .match { color: var(--selected-match); font-weight: 600; }
+    .error { color: var(--palette-error); }
+    .statuses { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 20px; font-size: 14px; }
+    .metrics { padding-left: 20px; font-size: 14px; }
+    .swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+    .swatch { border: 1px solid var(--palette-border); padding: 12px; background: var(--palette-raised); font-size: 14px; }
+    .sample { height: 30px; background: var(--sample); margin-bottom: 8px; }
+    code { font-family: "DejaVu Sans Mono", monospace; }
+    .note { color: var(--palette-barText); font-size: 14px; }
+    @media (max-width: 800px) { body { padding: 20px; } .comparison { grid-template-columns: 1fr; } .swatches { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (prefers-reduced-motion: no-preference) { .comparison { transition: filter 150ms ease; } }
+  </style>
+  <script src="palette.js" defer></script>
+</head>
+<body>
+  <h1>Charcoal, with clearer states</h1>
+  <p>The same restrained workstation identity, with readable muted text, visible pane boundaries, and one shared selection fill. These browser examples illustrate the configured colors; they are not native desktop screenshots.</p>
+  <p><a href="color-review.md">Read the research, palette audit, and accessibility limits</a></p>
+  <input id="grayscale" type="checkbox"><label for="grayscale">Compare in grayscale</label>
+  <main class="comparison" aria-label="Original and revised color examples">
+    <section class="panel" aria-labelledby="original-title">
+      <h2 id="original-title">Original</h2>
+      <div class="canvas">
+        <h3>Editor · focused window</h3>
+        <div class="editor" aria-label="Illustrative syntax with a selected line"><span class="ln">1</span><span class="statement">let</span>
+<span class="ln">2</span>  <span class="identifier">name</span> = <span class="string">"workstation"</span>;
+<span class="ln">3</span>  <span class="text-selection identifier">selected configuration</span>
+<span class="ln">4</span>  <span class="comment"># a quiet place to work</span></div>
+        <div class="split" aria-label="Pane separator"></div>
+        <div class="popup"><strong>Diagnostic details</strong><br><span class="warning">Warning: review this setting</span></div>
+        <div class="popup launcher">
+          <div class="search">&gt; Search: ter</div>
+          <div class="result selected"><span class="match">Ter</span>minal · Foot</div>
+          <div class="result">File browser · Yazi</div>
+        </div>
+        <div class="statuses"><span class="success">✓ Copied</span><span class="warning">! Warning</span><span class="error">× Error</span></div>
+      </div>
+      <ul class="metrics">
+        <li>Line numbers on base: <strong>3.78:1</strong></li>
+        <li>Border on raised surface: <strong>2.88:1</strong></li>
+        <li>Editor selection fill on base: <strong>1.59:1</strong></li>
+        <li>Launcher selection fill on base: <strong>1.38:1</strong></li>
+      </ul>
+    </section>
+    <section class="panel revised" aria-labelledby="revised-title">
+      <h2 id="revised-title">Revised</h2>
+      <div class="canvas">
+        <h3>Editor · focused window</h3>
+        <div class="editor" aria-label="Illustrative syntax with a selected line"><span class="ln">1</span><span class="statement">let</span>
+<span class="ln">2</span>  <span class="identifier">name</span> = <span class="string">"workstation"</span>;
+<span class="ln">3</span>  <span class="text-selection identifier">selected configuration</span>
+<span class="ln">4</span>  <span class="comment"># a quiet place to work</span></div>
+        <div class="split" aria-label="Pane separator"></div>
+        <div class="popup"><strong>Diagnostic details</strong><br><span class="warning">Warning: review this setting</span></div>
+        <div class="popup launcher">
+          <div class="search">&gt; Search: ter</div>
+          <div class="result selected"><span class="match">Ter</span>minal · Foot</div>
+          <div class="result">File browser · Yazi</div>
+        </div>
+        <div class="statuses"><span class="success">✓ Copied</span><span class="warning">! Warning</span><span class="error">× Error</span></div>
+      </div>
+      <ul class="metrics">
+        <li>Line numbers on base: <strong>5.33:1</strong></li>
+        <li>Border on raised surface: <strong>4.34:1</strong></li>
+        <li>Shared selection fill on base: <strong>3.53:1</strong></li>
+        <li>Selected off-white text: <strong>4.66:1</strong></li>
+      </ul>
+    </section>
+  </main>
+  <h2>Revised role colors</h2>
+  <div class="swatches" aria-label="Palette with hex values">
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-base)"></div>Base<br><code data-palette="base"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-raised)"></div>Raised surface<br><code data-palette="raised"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-body)"></div>Body text<br><code data-palette="body"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-muted)"></div>Muted text<br><code data-palette="muted"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-border)"></div>Boundary<br><code data-palette="border"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-selection)"></div>Selection<br><code data-palette="selection"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-focus)"></div>Focus / information<br><code data-palette="focus"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-error)"></div>Error / urgency<br><code data-palette="error"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-success)"></div>Success / strings<br><code data-palette="success"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-warning)"></div>Warning / constants<br><code data-palette="warning"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-teal)"></div>Teal / identifiers<br><code data-palette="teal"></code></div>
+    <div class="swatch"><div class="sample" style="--sample: var(--palette-mauve)"></div>Mauve / statements<br><code data-palette="mauve"></code></div>
+  </div>
+  <p class="note">Status words and symbols here demonstrate redundant cues; they do not imply that every native application has them. Grayscale checks lightness separation, not all forms of color-vision deficiency. Contrast ratios use opaque sRGB values; full accessibility also depends on typography, labels, keyboard focus, native rendering, and application overrides.</p>
+</body>
+</html>

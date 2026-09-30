@@ -1,0 +1,102 @@
+input {
+    keyboard { xkb { layout "@keyboardLayout@"; options "@keyboardOptions@"; }; }
+    touchpad { tap; natural-scroll; }
+    @focusFollowsMouse@
+}
+layout {
+    gaps 10
+    background-color "@palette.canvas@"
+    center-focused-column "on-overflow"
+    default-column-width { proportion 0.5; }
+    focus-ring { off; }
+    border {
+        on
+        width 2
+        active-color "@palette.focus@"
+        inactive-color "@palette.inactive@"
+        urgent-color "@palette.error@"
+    }
+    shadow {
+        on
+        softness 20
+        spread 2
+        offset x=0 y=4
+        color "#00000045"
+        inactive-color "#00000024"
+    }
+    insert-hint { color "@palette.selection@"; }
+}
+overview { backdrop-color "@palette.overview@"; }
+window-rule {
+    geometry-corner-radius 0
+    clip-to-geometry true
+}
+workspace "Code"
+workspace "Web"
+workspace "Review"
+workspace "Communicate"
+workspace "Lab"
+screenshot-path "~/Pictures/Screenshot-%Y-%m-%d-%H-%M-%S.png"
+prefer-no-csd
+hotkey-overlay { skip-at-startup; hide-not-bound; }
+binds {
+    Mod+F1 { show-hotkey-overlay; }
+    Mod+Shift+F1 hotkey-overlay-title="Quick start guide" { spawn "foot" "-e" "workstation-help"; }
+    Mod+Return { spawn "foot"; }
+    Mod+Shift+Return { spawn "foot"; }
+    Mod+N hotkey-overlay-title="Network settings" { spawn "foot" "-e" "nmtui"; }
+    Mod+D { spawn "fuzzel"; }
+    Mod+E { spawn "foot" "-e" "yazi"; }
+    Mod+B { spawn "firefox"; }
+    Mod+Shift+B hotkey-overlay-title="Battery status" { spawn "foot" "--hold" "-e" "workstation-battery"; }
+    Mod+M hotkey-overlay-title="Restore last notification" { spawn "makoctl" "restore"; }
+    Mod+Shift+M hotkey-overlay-title="Dismiss notification" { spawn "makoctl" "dismiss"; }
+    Mod+Ctrl+M hotkey-overlay-title="Notification actions" { spawn "makoctl" "menu" "--" "fuzzel" "--dmenu"; }
+    Mod+Q { close-window; }
+    Mod+Escape { spawn "swaylock" "-f"; }
+    Mod+Shift+E { quit; }
+    Mod+H { focus-column-left; }
+    Mod+L { focus-column-right; }
+    Mod+J { focus-window-down; }
+    Mod+K { focus-window-up; }
+    Mod+Shift+H { move-column-left; }
+    Mod+Shift+L { move-column-right; }
+    Mod+Shift+J { move-window-down; }
+    Mod+Shift+K { move-window-up; }
+    Mod+Left { focus-column-left; }
+    Mod+Right { focus-column-right; }
+    Mod+Down { focus-window-down; }
+    Mod+Up { focus-window-up; }
+    Mod+Shift+Left { move-column-left; }
+    Mod+Shift+Right { move-column-right; }
+    Mod+Shift+Down { move-window-down; }
+    Mod+Shift+Up { move-window-up; }
+    Mod+F { maximize-column; }
+    Mod+Shift+F { fullscreen-window; }
+    Mod+R { switch-preset-column-width; }
+    Mod+Space { toggle-overview; }
+    Mod+1 { focus-workspace "Code"; }
+    Mod+2 { focus-workspace "Web"; }
+    Mod+3 { focus-workspace "Review"; }
+    Mod+4 { focus-workspace "Communicate"; }
+    Mod+5 { focus-workspace "Lab"; }
+    Mod+Shift+1 { move-column-to-workspace "Code"; }
+    Mod+Shift+2 { move-column-to-workspace "Web"; }
+    Mod+Shift+3 { move-column-to-workspace "Review"; }
+    Mod+Shift+4 { move-column-to-workspace "Communicate"; }
+    Mod+Shift+5 { move-column-to-workspace "Lab"; }
+    Print { screenshot; }
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "wpctl" "set-volume" "-l" "1.0" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "5%+"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "5%-"; }
+}
+
+// A terminal workspace inside Niri; ordinary GUI apps still use Niri windows.
+spawn-at-startup "foot" "--app-id=workstation-terminal"
+window-rule {
+    match app-id="^workstation-terminal$"
+    open-on-workspace "Code"
+    open-maximized true
+}

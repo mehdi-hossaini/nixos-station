@@ -1,0 +1,32 @@
+name: Validate workstation
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: Fast validation
+        run: nix build .#checks.x86_64-linux.fast --no-link --no-update-lock-file --max-jobs 2 --cores 4 -L
+      - name: Verify VM acceleration
+        run: |
+          if ! test -e /dev/kvm; then
+            echo 'The full suite needs a Nix builder with KVM.' >&2
+            exit 1
+          fi
+          nix config show | grep -E '^system-features = .*kvm'
+      - name: Full validation, including disposable VMs
+        run: bash scripts/check-all.sh .#checks.x86_64-linux --max-jobs 2 --cores 4 -L
+      - name: Build workstation fixture
+        run: nix build .#nixosConfigurations.workstation-test.config.system.build.toplevel --no-link --no-update-lock-file --max-jobs 2 --cores 4 -L

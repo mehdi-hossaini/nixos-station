@@ -1,0 +1,2 @@
+# Dotted module options are grouped by purpose rather than by attribute prefix.
+disabled = ["repeated_keys"]
