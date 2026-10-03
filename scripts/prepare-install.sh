@@ -52,22 +52,44 @@ publish_bootstrap_file() {
 trap cleanup_staging EXIT
 mount -t btrfs -o subvolid=5 /dev/mapper/cryptroot "$staging"
 staging_mounted=1
-if test -e "$staging/.workstation-layout-v1"; then
-  test "$(cat "$staging/.workstation-layout-v1")" = niri-workstation-v1
+layout_marker=$staging/.workstation-layout-v1
+if test -e "$layout_marker" || test -L "$layout_marker"; then
+  if ! test -f "$layout_marker" || test -L "$layout_marker" ||
+    test "$(cat "$layout_marker")" != niri-workstation-v1; then
+    echo 'Refusing an invalid workstation layout marker.' >&2
+    exit 1
+  fi
 fi
-if ! test -e "$staging/@root-blank"; then
+if ! test -e "$staging/@root-blank" && ! test -L "$staging/@root-blank"; then
   btrfs subvolume create "$staging/@root-blank"
-  # The private bootstrap umask must not restrict traversal of the system root.
-  chmod 0755 "$staging/@root-blank"
-  btrfs property set -ts "$staging/@root-blank" ro true
 fi
-test "$(btrfs property get -ts "$staging/@root-blank" ro)" = ro=true
+if test -L "$staging/@root-blank" || ! btrfs subvolume show "$staging/@root-blank" >/dev/null; then
+  echo 'Refusing an invalid root template.' >&2
+  exit 1
+fi
 blank_entry=$(find "$staging/@root-blank" -mindepth 1 -print -quit)
 if test -n "$blank_entry"; then
   echo "Refusing a nonempty root template: $blank_entry" >&2
   exit 1
 fi
-printf '%s\n' niri-workstation-v1 >"$staging/.workstation-layout-v1"
+case $(btrfs property get -ts "$staging/@root-blank" ro) in
+ro=false)
+  # Complete a prior attempt interrupted between creation and making it read-only.
+  # The private bootstrap umask must not restrict traversal of the system root.
+  chmod 0755 "$staging/@root-blank"
+  btrfs property set -ts "$staging/@root-blank" ro true
+  ;;
+ro=true) ;;
+*)
+  echo 'Refusing an invalid root template read-only property.' >&2
+  exit 1
+  ;;
+esac
+test "$(stat -c %a "$staging/@root-blank")" = 755
+test "$(btrfs property get -ts "$staging/@root-blank" ro)" = ro=true
+bootstrap_temp=$(mktemp "$staging/.workstation-layout-v1.XXXXXXXX")
+printf '%s\n' niri-workstation-v1 >"$bootstrap_temp"
+publish_bootstrap_file "$layout_marker"
 
 install -d -m 0700 /mnt/persist/bootstrap /mnt/persist/keys/sops
 password_path=/mnt/persist/bootstrap/login-password.hash

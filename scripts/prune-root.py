@@ -14,6 +14,9 @@ GET_INFO = 0x81F8943C
 GET_ROOTREF = 0xD000943D
 LOOKUP_USER = 0xD000943E
 FS_INFO = 0x8400941F
+GET_FLAGS = 0x80089419
+SET_FLAGS = 0x4008941A
+READ_ONLY = 1 << 1
 MAX_DEPTH = 64
 MAX_LOOKUPS = 256
 
@@ -28,6 +31,15 @@ def filesystem(fd):
     data = bytearray(1024)
     fcntl.ioctl(fd, FS_INFO, data)
     return data[16:32]
+
+
+def make_writable(fd):
+    flags = bytearray(8)
+    fcntl.ioctl(fd, GET_FLAGS, flags)
+    value = struct.unpack_from("=Q", flags)[0]
+    if value & READ_ONLY:
+        struct.pack_into("=Q", flags, 0, value & ~READ_ONLY)
+        fcntl.ioctl(fd, SET_FLAGS, flags)
 
 
 def child(fd):
@@ -80,15 +92,19 @@ def prune(mount, root, budget):
             if expected is not None and treeid != expected:
                 raise ValueError("Archive descendant identity changed")
             descendant = child(fd)
+            if descendant:
+                identity, relative = descendant
+                target = path / relative
+                if target.resolve() != target or not target.is_relative_to(root):
+                    raise ValueError("Archive descendant escapes its root or follows a symlink")
+                if len(stack) >= MAX_DEPTH:
+                    raise ValueError("Archive subvolume nesting exceeds the supported depth")
+                # Deleting a child requires a writable parent, even by ID.
+                # Change only the validated archive ancestor through its fd.
+                make_writable(fd)
         finally:
             os.close(fd)
         if descendant:
-            identity, relative = descendant
-            target = path / relative
-            if target.resolve() != target or not target.is_relative_to(root):
-                raise ValueError("Archive descendant escapes its root or follows a symlink")
-            if len(stack) >= MAX_DEPTH:
-                raise ValueError("Archive subvolume nesting exceeds the supported depth")
             stack.append((target, identity))
         else:
             subprocess.run(

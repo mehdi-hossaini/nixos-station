@@ -5,11 +5,17 @@ in
 pkgs.testers.runNixOSTest {
   name = "workstation-root-reset";
   nodes.machine = _: {
-    virtualisation.emptyDiskImages = [ 2048 ];
+    virtualisation.emptyDiskImages = [
+      2048
+      32768
+      32768
+    ];
     environment.systemPackages = [
       reset
       pkgs.btrfs-progs
       pkgs.cryptsetup
+      pkgs.lvm2.bin
+      pkgs.python3
     ];
   };
   testScript = ''
@@ -71,6 +77,30 @@ pkgs.testers.runNixOSTest {
     machine.fail("workstation-reset-root /dev/mapper/testroot /run/test-reset")
     machine.succeed("mount /dev/mapper/testroot /top; grep protected /top/@root/do-not-change")
     machine.fail("test -e /top/@root/unexpected")
+    # Read-only nested ancestors must not stall budgeted archive cleanup.
+    machine.succeed("mkdir /top/@old-roots/readonly-fixture; btrfs subvolume create /top/@old-roots/readonly-fixture/root")
+    machine.succeed("btrfs subvolume create /top/@old-roots/readonly-fixture/root/parent; btrfs subvolume create /top/@old-roots/readonly-fixture/root/parent/child")
+    for path in ["/top/@old-roots/readonly-fixture/root/parent/child", "/top/@old-roots/readonly-fixture/root/parent", "/top/@old-roots/readonly-fixture/root"]:
+        machine.succeed(f"btrfs property set -ts {path} ro true")
+    machine.succeed("test $(python3 ${../scripts/prune-root.py} /top /top/@old-roots/readonly-fixture/root 1) -eq 1")
+    machine.fail("test -e /top/@old-roots/readonly-fixture/root/parent/child")
+    machine.succeed("test -d /top/@old-roots/readonly-fixture/root/parent; grep protected /top/@root/do-not-change")
+    machine.succeed("test $(btrfs property get -ts /top/@root-blank ro) = ro=true")
+    machine.succeed("test $(python3 ${../scripts/prune-root.py} /top /top/@old-roots/readonly-fixture/root 16) -eq 2")
+    machine.fail("test -e /top/@old-roots/readonly-fixture/root")
+    machine.succeed("grep protected /top/@root/do-not-change")
     machine.succeed("umount /top")
+
+    # Two additional disposable disks exercise the installer's actual probes.
+    storage_check = "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=${../scripts} WORKSTATION_BLKID_LIBRARY=${pkgs.util-linux.lib}/lib/libblkid.so.1 python3 ${./storage-guards.py}"
+    machine.succeed("mkfs.btrfs -f /dev/vdc /dev/vdd; mkdir /tmp/storage-guard-btrfs; mount /dev/vdc /tmp/storage-guard-btrfs")
+    machine.succeed(f"{storage_check} mounted-btrfs")
+    machine.succeed("umount /tmp/storage-guard-btrfs")
+    machine.succeed(f"{storage_check} unmounted-btrfs")
+
+    machine.succeed("wipefs -a /dev/vdc /dev/vdd; pvcreate /dev/vdc /dev/vdd; vgcreate storage-guard-fixture /dev/vdc /dev/vdd")
+    machine.succeed("lvcreate -n selected -L 32M storage-guard-fixture /dev/vdc; lvcreate -n survivor -L 32M storage-guard-fixture /dev/vdd")
+    machine.succeed("vgchange -an storage-guard-fixture; udevadm settle")
+    machine.succeed(f"{storage_check} inactive-lvm")
   '';
 }
