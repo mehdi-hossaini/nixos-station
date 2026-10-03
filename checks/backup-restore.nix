@@ -89,7 +89,10 @@ pkgs.testers.runNixOSTest {
     backup.wait_for_unit("persist.mount")
     backup.wait_for_open_port(22, addr="sftp", timeout=30)
     sftp.succeed("mkdir -p /srv/backups; chown fixture:users /srv/backups")
-    backup.succeed("mkdir -p /projects/demo/node_modules /persist/state; echo project-data > /projects/demo/sentinel; echo identity-data > /persist/state/sentinel; echo excluded > /projects/demo/node_modules/excluded")
+    backup.succeed("mkdir -p /projects/demo/source /persist/state/target /persist/state/personal; echo project-data > /projects/demo/sentinel; echo identity-data > /persist/state/sentinel; echo personal-directory > /persist/state/target/sentinel")
+    for name in ["node_modules", "target", ".venv", ".direnv"]:
+        backup.succeed(f"mkdir /projects/demo/{name}; echo excluded > /projects/demo/{name}/excluded; echo source-file > /projects/demo/source/{name}")
+        backup.succeed(f"echo personal-file > /persist/state/personal/{name}")
     backup.succeed("test $(stat -c %a /run/secrets/restic-password) = 400; test $(stat -c %a /run/secrets/restic-ssh-key) = 400")
     # The production unit must reject an untrusted host, then recover after
     # the declarative known-hosts entry is restored.
@@ -102,7 +105,10 @@ pkgs.testers.runNixOSTest {
     # VM control shell must retain ownership of its command terminal.
     backup.succeed("rm /projects/demo/sentinel /persist/state/sentinel; systemd-run --wait --collect -p StandardInput=null -p StandardOutput=append:/tmp/restore.log -p StandardError=append:/tmp/restore.log /run/current-system/sw/bin/restic-workstation restore latest --target /tmp/restored", timeout=120)
     backup.succeed("grep project-data /tmp/restored/projects/demo/sentinel; grep identity-data /tmp/restored/persist/state/sentinel")
-    backup.fail("test -e /tmp/restored/projects/demo/node_modules/excluded")
+    backup.succeed("grep personal-directory /tmp/restored/persist/state/target/sentinel")
+    for name in ["node_modules", "target", ".venv", ".direnv"]:
+        backup.succeed(f"grep source-file /tmp/restored/projects/demo/source/{name}; grep personal-file /tmp/restored/persist/state/personal/{name}")
+        backup.fail(f"test -e /tmp/restored/projects/demo/{name}/excluded")
     backup.succeed("systemd-run --wait --collect -p StandardInput=null -p StandardOutput=append:/tmp/check.log -p StandardError=append:/tmp/check.log /run/current-system/sw/bin/restic-workstation check --read-data", timeout=120)
     backup.succeed("test $(systemctl show -P Slice restic-backups-workstation) = workstation-build.slice")
   '';

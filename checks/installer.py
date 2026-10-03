@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.dont_write_bytecode = True
 installer_path = sys.argv.pop(1)
@@ -81,6 +81,47 @@ class FrozenInstallationTests(unittest.TestCase):
         self.assertNotEqual(source, preview)
         self.assertEqual((preview / "scripts/prepare-install.sh").read_text(), "# frozen bootstrap")
         self.assertEqual((source / "scripts/prepare-install.sh").read_text(), "# revised bootstrap")
+
+    def test_freezing_accepts_the_same_nix_secret_path_in_the_captured_source(self):
+        secret = self.repo / "secrets/workstation.yaml"
+        secret.parent.mkdir()
+        secret.write_text("encrypted fixture")
+        settings = self.settings | {"secretsFile": str(secret)}
+
+        def evaluate(*args, **kwargs):
+            if "--file" in args:
+                return json.dumps(
+                    settings
+                    | {"secretsFile": str(self.snapshots.path / "secrets/workstation.yaml")}
+                )
+            return self.evaluate(*args, **kwargs)
+
+        with patch.object(installer, "run", side_effect=evaluate):
+            source = installer.freeze_installation(settings)
+        self.assertEqual((source / "secrets/workstation.yaml").read_text(), secret.read_text())
+        self.assertNotIn("secretsFile", json.loads((source / "installation.json").read_text()))
+
+    def test_secret_relocation_does_not_hide_different_paths_or_contents(self):
+        secret = self.repo / "secrets/workstation.yaml"
+        secret.parent.mkdir()
+        secret.write_text("encrypted fixture")
+        for relative, content in (
+            ("secrets/other.yaml", "encrypted fixture"),
+            ("secrets/workstation.yaml", "different encrypted fixture"),
+        ):
+
+            def evaluate(*_args, relative=relative, content=content, **_kwargs):
+                captured = self.snapshots.path / relative
+                captured.write_text(content)
+                return json.dumps(self.settings | {"secretsFile": str(captured)})
+
+            with (
+                self.subTest(relative=relative, content=content),
+                patch.object(installer, "run", side_effect=evaluate),
+                self.assertRaisesRegex(ValueError, "Settings changed"),
+            ):
+                installer.freeze_installation(self.settings | {"secretsFile": str(secret)})
+            self.snapshots.frozen = False
 
     def test_bootstrap_uses_supplied_username_without_reading_live_nix_settings(self):
         commands = self.repo / "bin"
@@ -654,7 +695,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(verify.call_count, 2)
         self.assertEqual([call.args[0] for call in run.call_args_list], ["bash"])
 
-    def exercise_flow(self, args, fail_build=False, fail_at=None):
+    def exercise_flow(self, args, fail_build=False, fail_at=None, legacy=False):
         from contextlib import ExitStack
 
         events = []
@@ -662,7 +703,15 @@ class InstallerTests(unittest.TestCase):
             stack.enter_context(patch.object(sys, "argv", ["install.py", *args]))
             stack.enter_context(patch("builtins.input", return_value="continue"))
             stack.enter_context(
-                patch.object(installer, "run", return_value='{"graphics": {"profile": "mesa"}}')
+                patch.object(
+                    installer,
+                    "run",
+                    return_value=json.dumps(
+                        {"graphics": None, "nvidia": False, "secretsFile": "/repo/secrets.yaml"}
+                        if legacy
+                        else {"graphics": {"profile": "mesa"}}
+                    ),
+                )
             )
             stack.enter_context(patch.object(installer, "choose_disk", return_value=DISK))
             stack.enter_context(
@@ -673,7 +722,9 @@ class InstallerTests(unittest.TestCase):
             stack.enter_context(patch.object(installer, "detect_hardware", return_value={}))
             stack.enter_context(patch.object(installer, "hardware_defaults", return_value={}))
             stack.enter_context(
-                patch.object(installer, "validate_saved", side_effect=lambda s, r: s)
+                patch.object(
+                    installer, "validate_saved", side_effect=lambda s, r: s | {"graphics": r}
+                )
             )
             for name in (
                 "resolve_hardware_graphics",
@@ -696,6 +747,8 @@ class InstallerTests(unittest.TestCase):
 
                 def record(*_args, label=name):
                     events.append(label)
+                    if label == "save_settings" and legacy:
+                        self.assertEqual(_args, ({"graphics": {"profile": "mesa"}},))
                     if label == fail_at:
                         raise ValueError("fixture failure")
                     if label == "resolve_hardware_graphics":
@@ -780,6 +833,11 @@ class InstallerTests(unittest.TestCase):
             ],
         )
 
+    def test_legacy_resume_saves_only_the_graphics_migration(self):
+        events = self.exercise_flow(["--resume"], legacy=True)
+        self.assertIn("save_settings", events)
+        self.assertNotIn("confirm_and_format", events)
+
     def test_normal_order(self):
         self.assertEqual(
             self.exercise_flow([]),
@@ -801,6 +859,163 @@ class InstallerTests(unittest.TestCase):
                 "finish",
             ],
         )
+
+
+class StorageSafetyTests(unittest.TestCase):
+    def inventory(self):
+        disk = copy.deepcopy(DISK)
+        disk["children"][0].update(name="/dev/testdisk1", **{"maj:min": "250:1"})
+        return [disk]
+
+    def test_kernel_btrfs_membership_includes_secondary_devices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "features").mkdir()
+            devices = root / "fixture-fsid/devices"
+            devices.mkdir(parents=True)
+            for name, number in (("sda1", "8:1"), ("sdb1", "8:17")):
+                device = root / "block" / name
+                device.mkdir(parents=True)
+                (device / "dev").write_text(number + "\n")
+                (devices / name).symlink_to(device)
+            # Only UUID directories live in the real Btrfs sysfs root.
+            sysfs = root / "btrfs"
+            sysfs.mkdir()
+            (sysfs / "features").mkdir()
+            (sysfs / "fixture-fsid").symlink_to(root / "fixture-fsid")
+            self.assertEqual(installer.mounted_btrfs_devices(sysfs), {"8:1", "8:17"})
+            (root / "block/sdb1/dev").write_text("unknown\n")
+            with self.assertRaisesRegex(ValueError, "Cannot identify"):
+                installer.mounted_btrfs_devices(sysfs)
+            (root / "block/sdb1/dev").unlink()
+            with self.assertRaisesRegex(ValueError, "Cannot inspect"):
+                installer.mounted_btrfs_devices(sysfs)
+            self.assertEqual(installer.mounted_btrfs_devices(root / "absent"), set())
+
+    def test_unreadable_btrfs_membership_fails_closed(self):
+        with (
+            patch.object(Path, "iterdir", side_effect=PermissionError("fixture")),
+            self.assertRaisesRegex(ValueError, "Cannot inspect active Btrfs"),
+        ):
+            installer.mounted_btrfs_devices()
+
+    def test_mounted_btrfs_secondary_member_is_unavailable_without_lsblk_mountpoint(self):
+        with (
+            patch.object(
+                installer, "run", return_value=json.dumps({"blockdevices": self.inventory()})
+            ),
+            patch.object(installer, "mounted_btrfs_devices", return_value={"250:1"}),
+            patch.object(installer, "storage_signature") as probe,
+        ):
+            disk = installer.disk_inventory()[0]
+        self.assertIn("mounted Btrfs", installer.blocked_reason(disk))
+        probe.assert_not_called()
+
+    def test_inactive_lvm_and_zfs_members_require_manual_preparation(self):
+        for signature in ("LVM2_member", "zfs_member"):
+            with (
+                self.subTest(signature=signature),
+                patch.object(
+                    installer, "run", return_value=json.dumps({"blockdevices": self.inventory()})
+                ),
+                patch.object(installer, "mounted_btrfs_devices", return_value=set()),
+                patch.object(
+                    installer, "storage_signature", side_effect=[None, signature]
+                ) as probe,
+            ):
+                disk = installer.disk_inventory()[0]
+            self.assertIn("entire volume group or pool", installer.blocked_reason(disk))
+            self.assertEqual(
+                [call.args[0] for call in probe.call_args_list], ["/dev/testdisk", "/dev/testdisk1"]
+            )
+
+    def test_probe_failures_make_candidate_unavailable(self):
+        with (
+            patch.object(
+                installer, "run", return_value=json.dumps({"blockdevices": self.inventory()})
+            ),
+            patch.object(installer, "mounted_btrfs_devices", return_value=set()),
+            patch.object(installer, "storage_signature", side_effect=ValueError("probe failed")),
+        ):
+            self.assertEqual(
+                installer.blocked_reason(installer.disk_inventory()[0]), "probe failed"
+            )
+
+    def test_post_confirmation_guard_refreshes_membership_and_signatures(self):
+        for change in ("btrfs", "lvm"):
+            with (
+                self.subTest(change=change),
+                patch.object(Path, "resolve", return_value=Path("/dev/testdisk")),
+                patch.object(Path, "exists", return_value=False),
+                patch.object(installer.os.path, "ismount", return_value=False),
+                patch.object(
+                    installer, "run", return_value=json.dumps({"blockdevices": self.inventory()})
+                ) as command,
+                patch.object(
+                    installer,
+                    "mounted_btrfs_devices",
+                    side_effect=[set(), {"250:1"} if change == "btrfs" else set()],
+                ) as membership,
+                patch.object(
+                    installer,
+                    "storage_signature",
+                    side_effect=[None, None, None, "LVM2_member"],
+                ) as probe,
+                patch.object(installer, "confirm_erase"),
+                patch.object(installer, "verify_hardware_unchanged"),
+                self.assertRaisesRegex(ValueError, "now unavailable"),
+            ):
+                installer.confirm_and_format(
+                    DISK, {}, {"disk": DISK["by_id"]}, [], Path("/nix/store/formatter")
+                )
+            self.assertEqual(membership.call_count, 2)
+            self.assertEqual(probe.call_count, 2 if change == "btrfs" else 4)
+            self.assertEqual(command.call_count, 2)
+            self.assertTrue(all(call.args[0] == "lsblk" for call in command.call_args_list))
+
+    def test_native_probe_errors_and_ambiguity_release_resources(self):
+        for result in (-1, -2):
+            library = Mock()
+            library.blkid_new_probe_from_filename.return_value = 123
+            library.blkid_do_safeprobe.return_value = result
+            with (
+                self.subTest(result=result),
+                patch.dict(os.environ, {"WORKSTATION_BLKID_LIBRARY": "fixture"}),
+                patch.object(installer.ctypes, "CDLL", return_value=library),
+                self.assertRaisesRegex(ValueError, "failed or is ambiguous"),
+            ):
+                installer.storage_signature("/dev/testdisk")
+            library.blkid_free_probe.assert_called_once_with(123)
+
+    def test_missing_probe_environment_or_library_fails_closed(self):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            self.assertRaisesRegex(ValueError, "installer environment"),
+        ):
+            installer.storage_signature("/dev/testdisk")
+        with (
+            patch.dict(os.environ, {"WORKSTATION_BLKID_LIBRARY": "/missing/library"}),
+            self.assertRaisesRegex(ValueError, "Cannot load"),
+        ):
+            installer.storage_signature("/dev/testdisk")
+
+    @unittest.skipUnless(
+        os.environ.get("WORKSTATION_BLKID_LIBRARY"),
+        "native probe library is supplied by the installer shell",
+    )
+    def test_real_native_probe_distinguishes_empty_missing_and_recognized_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            device = Path(directory) / "fixture"
+            device.write_bytes(bytes(65536))
+            self.assertIsNone(installer.storage_signature(device))
+            with self.assertRaisesRegex(ValueError, "Cannot open"):
+                installer.storage_signature(Path(directory) / "missing")
+            swap = bytearray(65536)
+            swap[1024:1028] = (1).to_bytes(4, "little")
+            swap[1028:1032] = (15).to_bytes(4, "little")
+            swap[4086:4096] = b"SWAPSPACE2"
+            device.write_bytes(swap)
+            self.assertEqual(installer.storage_signature(device), "swap")
 
 
 class ConsoleSettingsTests(unittest.TestCase):

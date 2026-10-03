@@ -35,10 +35,10 @@ test:
     bash scripts/run-bounded.sh bash scripts/with-local-flake.sh nix build .#checks.x86_64-linux.root-reset .#checks.x86_64-linux.boot .#checks.x86_64-linux.session-lifecycle .#checks.x86_64-linux.desktop-session .#checks.x86_64-linux.backup-restore --no-link --no-update-lock-file --max-jobs 2 --cores 4 -L
 
 diff:
-    bash scripts/run-bounded.sh bash scripts/with-local-flake.sh nh os build @local-flake@ --hostname workstation --max-jobs 2 --cores 4
+    bash scripts/run-bounded.sh bash scripts/with-local-flake.sh nh os build @local-flake@ --hostname workstation --no-update-lock-file --max-jobs 2 --cores 4
 
 switch:
-    bash scripts/run-bounded.sh bash scripts/with-local-flake.sh sudo nixos-rebuild switch --flake .#workstation --max-jobs 2 --cores 4
+    bash scripts/run-bounded.sh bash scripts/with-local-flake.sh sudo nixos-rebuild switch --flake .#workstation --no-update-lock-file --max-jobs 2 --cores 4
 
 boot:
-    bash scripts/run-bounded.sh bash scripts/with-local-flake.sh sudo nixos-rebuild boot --flake .#workstation --max-jobs 2 --cores 4
+    bash scripts/run-bounded.sh bash scripts/with-local-flake.sh sudo nixos-rebuild boot --flake .#workstation --no-update-lock-file --max-jobs 2 --cores 4

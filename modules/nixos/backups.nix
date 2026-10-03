@@ -27,11 +27,13 @@
           "/persist"
           "/projects"
         ];
+        # Exclude cache contents only in Projects. Matching children preserves
+        # ordinary files with these names and all durable personal state.
         exclude = [
-          "**/node_modules"
-          "**/target"
-          "**/.venv"
-          "**/.direnv"
+          "/projects/**/node_modules/*"
+          "/projects/**/target/*"
+          "/projects/**/.venv/*"
+          "/projects/**/.direnv/*"
         ];
         extraOptions = [
           # NixOS inserts extraOptions into shell commands. Preserve the

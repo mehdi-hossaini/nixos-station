@@ -248,6 +248,7 @@
             ];
             WORKSTATION_ZONEINFO = "${pkgs.tzdata}/share/zoneinfo";
             WORKSTATION_XKB = "${pkgs.xkeyboard_config}/share/X11/xkb";
+            WORKSTATION_BLKID_LIBRARY = "${pkgs.util-linux.lib}/lib/libblkid.so.1";
           };
           apps.preview-terminal = {
             type = "app";
@@ -343,10 +344,12 @@
                       pkgs.git
                       pkgs.gnutar
                       pkgs.diffutils
+                      pkgs.just
+                      pkgs.nh
                     ];
                   }
                   ''
-                    python3 ${./checks/local-flake.py} ${./scripts/with-local-flake.sh} ${./.gitignore} ${./scripts/sync-checkout.sh} ${./scripts/check-all.sh}
+                    python3 ${./checks/local-flake.py} ${./scripts/with-local-flake.sh} ${./.gitignore} ${./scripts/sync-checkout.sh} ${./scripts/check-all.sh} ${./justfile} ${./scripts/run-bounded.sh}
                     touch "$out"
                   '';
               graphics-profiles = group "graphics-profiles" checkGroups.graphics-profiles;
@@ -372,6 +375,7 @@
               installer =
                 pkgs.runCommand "workstation-installer-tests"
                   {
+                    WORKSTATION_BLKID_LIBRARY = "${pkgs.util-linux.lib}/lib/libblkid.so.1";
                     nativeBuildInputs = [
                       pkgs.python3
                       pkgs.gum
