@@ -22,7 +22,7 @@
   };
   programs.zsh = {
     enable = true;
-    # The terminal-first home config lets zsh-autocomplete own compinit.
+    # Home Manager initializes completion once, before loading fzf-tab.
     enableGlobalCompInit = false;
   };
   home-manager = {

@@ -38,8 +38,8 @@ let
     assert c.programs.niri.enable && home.programs.foot.enable;
     assert !home.programs.tmux.enable;
     assert home.programs.carapace.enable;
-    assert !home.programs.zsh.enableCompletion;
-    assert !home.programs.zsh.autosuggestion.enable;
+    assert home.programs.zsh.enableCompletion;
+    assert home.programs.zsh.autosuggestion.enable;
     assert !c.programs.zsh.enableGlobalCompInit;
     assert !(builtins.any (p: pkgs.lib.getName p == "herdr") home.home.packages);
     assert home.programs.firefox.enable;

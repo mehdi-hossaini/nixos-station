@@ -15,8 +15,10 @@ START A PROJECT
   direnv allow       Approve a trusted project's .envrc to load its tools.
 
 COMPLETION AND COMMANDS
-  Pause while typing to see command flags, paths and contextual suggestions.
-  Tab inserts a candidate; Down enters the menu; Enter accepts a selection.
+  Tab opens searchable completion for command flags, paths and arguments.
+  Type to filter; arrows choose; Enter inserts a selection; Esc cancels.
+  Gray text after the cursor suggests a previous command. Right accepts it at
+  the end of the command line; review it before pressing Enter to run it.
   Ctrl+R searches shell history. Ctrl+C cancels the current command/menu.
   Ctrl+X, then Ctrl+E edits your current command in Neovim.
     Save and quit to return it to the prompt; review it before pressing Enter.
