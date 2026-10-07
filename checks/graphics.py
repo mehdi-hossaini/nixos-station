@@ -287,6 +287,62 @@ class GraphicsTests(unittest.TestCase):
                             {"graphics": config, "userName": "dev"}
                         )
 
+    def test_selected_driver_blacklists_are_checked_in_kernel_parameters(self):
+        for devices, driver in (([RADEON], "amdgpu"), ([INTEL], "i915"), ([NVIDIA], "nvidia")):
+            config = self.resolve(devices)
+            actual = self.evaluated(config)
+            for parameter in (
+                f"module_blacklist={driver}",
+                f"module-blacklist=unrelated,{driver}",
+                f'module_blacklist="{driver},unrelated"',
+                f"modprobe.blacklist=unrelated,{driver}",
+            ):
+                with (
+                    self.subTest(parameter=parameter),
+                    patch.object(
+                        installer, "run", return_value=json.dumps(actual | {"params": [parameter]})
+                    ),
+                    self.assertRaisesRegex(ValueError, "graphics driver is blacklisted"),
+                ):
+                    installer.verify_graphics_configuration({"graphics": config, "userName": "dev"})
+            with patch.object(
+                installer,
+                "run",
+                return_value=json.dumps(actual | {"params": ["module_blacklist=unrelated"]}),
+            ):
+                installer.verify_graphics_configuration({"graphics": config, "userName": "dev"})
+
+    def test_nvidia_required_display_modules_cannot_be_blacklisted(self):
+        for devices in ([NVIDIA], [INTEL, NVIDIA]):
+            config = self.resolve(devices)
+            actual = self.evaluated(config)
+            for module in ("nvidia_drm", "nvidia_modeset"):
+                for change in (
+                    {"blacklist": [module]},
+                    {"blacklist": [module.replace("_", "-")]},
+                    {"params": [f"module_blacklist={module}"]},
+                    {"params": [f"modprobe.blacklist={module}"]},
+                    {"params": [f'modprobe.blacklist="unrelated,{module.replace("_", "-")}"']},
+                ):
+                    with (
+                        self.subTest(devices=devices, module=module, change=change),
+                        patch.object(installer, "run", return_value=json.dumps(actual | change)),
+                        self.assertRaisesRegex(ValueError, "graphics driver is blacklisted"),
+                    ):
+                        installer.verify_graphics_configuration(
+                            {"graphics": config, "userName": "dev"}
+                        )
+                # The kernel blacklist compares names literally. These hyphen
+                # spellings do not match the modules' actual underscore names.
+                with patch.object(
+                    installer,
+                    "run",
+                    return_value=json.dumps(
+                        actual | {"params": [f"module_blacklist={module.replace('_', '-')}"]}
+                    ),
+                ):
+                    installer.verify_graphics_configuration({"graphics": config, "userName": "dev"})
+
     @unittest.skipIf(
         profiles is None, "provide built graphics-profiles for Nix projection integration"
     )

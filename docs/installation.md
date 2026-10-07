@@ -31,7 +31,11 @@ sudo bash scripts/install.sh
 
 1. Choose your target disk with **arrow keys and Enter**. Model, size, device and
    serial identify it; the full stable disk ID also appears before erasure.
-   Mounted disks, active swap and storage mappers are excluded.
+   Mounted disks, active swap and storage mappers are excluded, including secondary
+   members of mounted Btrfs filesystems. Disks containing LVM or ZFS members are
+   also excluded: the formatter can destroy their entire volume group or pool,
+   affecting other disks. Prepare those disks manually after reviewing and backing
+   up the complete group or pool before using the guided installer.
 2. Review preferences on one screen. **Press Enter to keep the defaults**, or
    select a field to edit. Type to search timezone and keyboard choices by name.
    The **Optional apps** checklist uses **Space to toggle** and Enter to save.
@@ -80,8 +84,9 @@ cache availability and machine.
 Input widths and menu heights adapt to terminal size; terminals smaller than
 40 columns or 18 rows use numbered text prompts automatically.
 
-**The chosen disk is completely erased.** The wizard rechecks its identity and
-whether it is in use immediately before running the formatter.
+**The chosen disk is completely erased.** The wizard rechecks its identity,
+active Btrfs membership and storage signatures immediately before running the
+formatter. Missing, failed or ambiguous storage probes prevent erasure.
 
 Your answers are saved in the local, Git-ignored `installation.json`; no passwords
 are stored there. A new clone starts without this file, and the installer creates

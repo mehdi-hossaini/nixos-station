@@ -28,14 +28,25 @@ windows or logging out. Files in persistent directories and shell history
 continue to survive reboots.
 
 The terminal-first shell uses [Carapace](https://carapace-sh.github.io/carapace-bin/)
-and [zsh-autocomplete](https://github.com/marlonrichert/zsh-autocomplete) for a
-live completion menu. Suggestions include command flags, paths and contextual
-arguments such as Git branches, even with empty history. Available candidates
-depend on the command's completer. Pause briefly while typing to see suggestions;
-**Tab** inserts the first candidate and **Down** opens menu selection. In the
-menu, use arrows or Tab to move and Enter to accept the selection. **Ctrl+R**
-searches history. Completion inserts text; it does not automatically run it.
-This is command-aware completion, without an AI account or model dependency.
+and [fzf-tab](https://github.com/Aloxaf/fzf-tab) for completion on request.
+Press **Tab** to complete command flags, paths and contextual arguments such as
+Git branches. When there are multiple candidates, a compact searchable picker
+opens: type to filter, use arrows to choose, **Enter** to insert and **Esc** to
+cancel. A single candidate can be inserted directly. Available candidates depend
+on the command's completer. Menus stay closed while typing. **Ctrl+R** searches
+history. Completion inserts text; it does not automatically run it.
+
+Inline suggestions show the rest of a matching previous command in gray. Press
+**Right** at the end of the command line to accept one, then review it before
+pressing **Enter** to run it. Press **Tab** when you want to choose among flags,
+paths and arguments instead.
+
+The pinned fzf-tab package carries a small fix for
+[Carapace path quoting](https://github.com/Aloxaf/fzf-tab/issues/503). It normalizes
+captured matches before either the compiled or shell capture path. It also
+preserves the quote context when decoding filenames for the picker and avoids
+parsing non-file candidates as standalone shell words. Remove this patch when
+an upstream release passes the interactive path-quoting checks.
 
 The installer has no desktop selector. Older `desktop` values in
 `installation.json` or `settings.nix` are ignored; all installations use this

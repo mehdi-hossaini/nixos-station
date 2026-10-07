@@ -37,8 +37,10 @@ ownership and restart requirements. Plaintext is delivered under `/run/secrets`.
 6. Test a restore into a separate directory before relying on the job.
 
 Daily backups cover `/persist` and `/projects`, including Git-ignored work except
-the explicit generated-directory exclusions in the backup module. Review those
-exclusions for your projects. Retention is 7 daily, 5 weekly and 12 monthly
+the contents of project directories named `node_modules`, `target`, `.venv` and
+`.direnv`. These exclusions apply only under `/projects`; ordinary files with
+those names and all `/persist` personal state are backed up. Review the excluded
+directories for your projects. Retention is 7 daily, 5 weekly and 12 monthly
 snapshots. These jobs read live files: use database dumps or quiesce services when
 application-level consistency is required. `/local` and `/nix` are excluded.
 

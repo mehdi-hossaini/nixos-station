@@ -23,7 +23,9 @@ the application paths listed in `modules/nixos/impermanence.nix` persist.
 Each prune run removes at most 16 empty archives or individual subvolumes and
 visits at most 256 subvolumes per archive, with a nesting limit of 64.
 It queries Btrfs metadata instead of traversing ordinary disposable files.
-Partly pruned archives remain valid and resume on the next run.
+Read-only subvolumes in an archive being pruned are made writable when needed
+to delete their children. Partly pruned archives remain valid and resume on the
+next run.
 
 Directories owned by Home Manager must not also be persisted wholesale.
 For a new application, identify its mutable data, add only that path with the

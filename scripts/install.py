@@ -2,6 +2,7 @@
 """Interactive live installer. Commands are argument arrays, never shell text."""
 
 import argparse
+import ctypes
 import fcntl
 import json
 import os
@@ -360,7 +361,20 @@ def verify_graphics_configuration(settings):
             "Kernel graphics overrides disable modesetting or force unsupported hardware."
         )
     modules = (drivers - {"intel"}) | ({"i915", "xe"} if "intel" in drivers else set())
-    if modules.intersection(actual["blacklist"]):
+    if nv:
+        modules.update({"nvidia_drm", "nvidia_modeset"})
+    # Modprobe accepts both spellings; the kernel's module_blacklist compares
+    # the literal module name, which uses underscores for the NVIDIA modules.
+    blacklisted = {name.replace("-", "_") for name in actual["blacklist"]}
+    for param in params:
+        name, separator, value = param.partition("=")
+        if separator:
+            name = name.replace("-", "_")
+            if name == "module_blacklist":
+                blacklisted.update(value.strip('"').split(","))
+            elif name == "modprobe.blacklist":
+                blacklisted.update(entry.replace("-", "_") for entry in value.strip('"').split(","))
+    if modules.intersection(blacklisted):
         raise ValueError(
             "A selected graphics driver is blacklisted in the installed configuration."
         )
@@ -440,7 +454,7 @@ def verify_disk_passphrase(settings):
 
 
 def disk_inventory():
-    return json.loads(
+    inventory = json.loads(
         run(
             "lsblk",
             "--json",
@@ -451,6 +465,109 @@ def disk_inventory():
             capture=True,
         )
     )["blockdevices"]
+    # lsblk omits secondary members of mounted multi-device Btrfs filesystems.
+    # Refresh kernel membership and on-disk signatures for every inventory,
+    # including the inventories taken immediately before erasure.
+    mounted = mounted_btrfs_devices()
+    for disk in inventory:
+        if disk["type"] != "disk":
+            continue
+        for node in block_tree(disk):
+            if node.get("maj:min") in mounted:
+                node["storage_blocked"] = "member of a mounted Btrfs filesystem"
+        if blocked_reason(disk):
+            continue
+        for node in block_tree(disk):
+            try:
+                signature = storage_signature(node["name"])
+            except (OSError, ValueError) as error:
+                node["storage_blocked"] = str(error)
+                break
+            if signature in ("LVM2_member", "zfs_member"):
+                node["storage_blocked"] = (
+                    f"{signature} member; prepare it manually because the formatter "
+                    "can destroy its entire volume group or pool on other disks"
+                )
+                break
+    return inventory
+
+
+def mounted_btrfs_devices(sysfs=Path("/sys/fs/btrfs")):
+    """Return device numbers of every member of an active Btrfs filesystem."""
+    devices = set()
+    try:
+        try:
+            filesystems = list(sysfs.iterdir())
+        except FileNotFoundError:
+            return devices
+        count = 0
+        for filesystem in filesystems:
+            if filesystem.name == "features":
+                continue
+            count += 1
+            if count > MAX_BLOCK_NODES:
+                raise ValueError("Btrfs membership exceeds the supported limit.")
+            for device in (filesystem / "devices").iterdir():
+                count += 1
+                if count > MAX_BLOCK_NODES:
+                    raise ValueError("Btrfs membership exceeds the supported limit.")
+                number = (device / "dev").read_text().strip()
+                if not re.fullmatch(r"[0-9]+:[0-9]+", number):
+                    raise ValueError("Cannot identify an active Btrfs member.")
+                devices.add(number)
+    except OSError as error:
+        raise ValueError(
+            "Cannot inspect active Btrfs membership. Nothing was formatted."
+        ) from error
+    return devices
+
+
+def storage_signature(device):
+    """Probe the device itself; udev's cached filesystem type may be stale."""
+    library_path = os.environ.get("WORKSTATION_BLKID_LIBRARY")
+    if not library_path:
+        raise ValueError(
+            "Storage probing requires the installer environment; run scripts/install.sh"
+        )
+    try:
+        library = ctypes.CDLL(library_path, use_errno=True)
+    except OSError as error:
+        raise ValueError(
+            "Cannot load the storage signature probe. Nothing was formatted."
+        ) from error
+    library.blkid_new_probe_from_filename.argtypes = [ctypes.c_char_p]
+    library.blkid_new_probe_from_filename.restype = ctypes.c_void_p
+    library.blkid_do_safeprobe.argtypes = [ctypes.c_void_p]
+    library.blkid_do_safeprobe.restype = ctypes.c_int
+    library.blkid_probe_lookup_value.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_char_p),
+        ctypes.POINTER(ctypes.c_size_t),
+    ]
+    library.blkid_probe_lookup_value.restype = ctypes.c_int
+    library.blkid_free_probe.argtypes = [ctypes.c_void_p]
+    library.blkid_free_probe.restype = None
+    probe = library.blkid_new_probe_from_filename(os.fsencode(device))
+    if not probe:
+        raise ValueError("Cannot open the storage signature probe; inspect the disk manually")
+    try:
+        result = library.blkid_do_safeprobe(probe)
+        # The CLI maps both empty devices and some I/O failures to exit 2.
+        # The library keeps those results distinct: 1 empty, -1 error, -2 ambiguous.
+        if result == 1:
+            return None
+        if result != 0:
+            raise ValueError("Storage probing failed or is ambiguous; inspect the disk manually")
+        signature = ctypes.c_char_p()
+        if library.blkid_probe_lookup_value(probe, b"TYPE", ctypes.byref(signature), None) != 0:
+            # A recognized partition table need not contain a filesystem.
+            return None
+        if signature.value is None:
+            raise ValueError("Cannot identify the storage signature; inspect the disk manually")
+        return signature.value.decode("ascii")
+    finally:
+        library.blkid_free_probe(probe)
 
 
 def block_tree(root):
@@ -484,6 +601,8 @@ def blocked_reason(disk):
         return "smaller than 32 GiB"
 
     for node in block_tree(disk):
+        if node.get("storage_blocked"):
+            return node["storage_blocked"]
         if any(node.get("mountpoints") or []):
             return "mounted, swap-active, or used by a storage mapper"
         # Reject active device-mapper/RAID consumers, even if unmounted.
@@ -815,6 +934,20 @@ def freeze_installation(settings):
     actual = json.loads(
         run("nix", "eval", "--json", "--file", str(source / "settings.nix"), capture=True)
     )
+    # A Nix path is serialized relative to the evaluated source, so capturing
+    # the same encrypted file changes its absolute spelling. Accept only that
+    # relocation, with the same relative path and file contents.
+    if isinstance(actual, dict):
+        original_secret, frozen_secret = settings.get("secretsFile"), actual.get("secretsFile")
+        if (
+            isinstance(original_secret, str)
+            and isinstance(frozen_secret, str)
+            and original_secret != frozen_secret
+            and Path(original_secret).is_relative_to(REPO)
+            and Path(frozen_secret) == source / Path(original_secret).relative_to(REPO)
+            and Path(original_secret).read_bytes() == Path(frozen_secret).read_bytes()
+        ):
+            actual["secretsFile"] = original_secret
     if not isinstance(actual, dict) or any(
         actual.get(key) != value for key, value in settings.items()
     ):
@@ -879,8 +1012,9 @@ def verify_target(selected):
     for field in ("name", "maj:min", "size", "serial", "model"):
         if current.get(field) != selected.get(field):
             raise ValueError("Disk identity changed. Start again.")
-    if blocked_reason(current):
-        raise ValueError("The selected disk is now busy or unavailable. Nothing was formatted.")
+    reason = blocked_reason(current)
+    if reason:
+        raise ValueError(f"The selected disk is now unavailable: {reason}. Nothing was formatted.")
 
     # Disko addresses generated partitions by label. Duplicates on a second
     # disk would make those links ambiguous even when the target ID is stable.
@@ -1115,7 +1249,7 @@ def main():
         if migrated:
             print("Migrating legacy graphics settings; original driver intent is preserved.")
             settings.pop("nvidia", None)
-            save_settings(settings)
+            save_settings({"graphics": settings["graphics"]})
         if args.export_settings:
             export_settings(args.export_settings)
         source = freeze_installation(settings)

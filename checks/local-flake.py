@@ -14,6 +14,8 @@ WRAPPER = Path(sys.argv.pop(1))
 IGNORE = Path(sys.argv.pop(1))
 SYNC = Path(sys.argv.pop(1))
 CHECK_ALL = Path(sys.argv.pop(1))
+JUSTFILE = Path(sys.argv.pop(1))
+BOUNDED = Path(sys.argv.pop(1))
 
 
 class SnapshotTests(unittest.TestCase):
@@ -27,6 +29,8 @@ class SnapshotTests(unittest.TestCase):
         shutil.copyfile(WRAPPER, self.wrapper)
         shutil.copyfile(SYNC, self.repo / "scripts/sync-checkout.sh")
         shutil.copyfile(CHECK_ALL, self.repo / "scripts/check-all.sh")
+        shutil.copyfile(BOUNDED, self.repo / "scripts/run-bounded.sh")
+        shutil.copyfile(JUSTFILE, self.repo / "justfile")
         shutil.copyfile(IGNORE, self.repo / ".gitignore")
         self.tracked = self.repo / "tracked.txt"
         self.tracked.write_text("original")
@@ -254,6 +258,81 @@ class SnapshotTests(unittest.TestCase):
         self.assertIn("installation.json must be a regular file", result.stderr)
         self.assertFalse(self.output.exists())
         self.assertEqual(target.read_text(), "private fixture")
+
+    def test_host_recipes_forward_pinned_inputs_through_nh_and_rebuild(self):
+        nh = shutil.which("nh")
+        self.assertIsNotNone(nh)
+        (self.repo / "installation.json").write_text("{}")
+        (self.repo / "flake.nix").write_text("{}")
+        lock = self.repo / "flake.lock"
+        lock.write_text('{"fixture": "pinned inputs"}')
+        self.git("add", "flake.nix", "flake.lock")
+        self.index = (self.repo / ".git/index").read_bytes()
+        commands = self.directory / "bin"
+        commands.mkdir()
+        # Real NH parses the recipe arguments and forwards them to Nix. The
+        # fake build fails before evaluating a flake or producing any output.
+        for name in ["nh", "nix", "nixos-rebuild", "sudo", "systemctl"]:
+            executable = commands / name
+            executable.write_text(
+                f"#!{sys.executable}\n"
+                "import json, os, sys\nfrom pathlib import Path\n"
+                "name = Path(sys.argv[0]).name\n"
+                "if name == 'systemctl': sys.exit(1)\n"
+                "if name == 'sudo': os.execvp(sys.argv[1], sys.argv[1:])\n"
+                f"log = Path({str(self.output)!r})\n"
+                "calls = json.loads(log.read_text()) if log.exists() else []\n"
+                "args = sys.argv[1:]\n"
+                "calls.append({'command': name, 'args': args})\n"
+                "log.write_text(json.dumps(calls))\n"
+                "if name == 'nh':\n"
+                f"    os.execv({nh!r}, [{nh!r}, *args, '--no-nom', '--diff', "
+                "'never', '--bypass-root-check', '--elevation-strategy', 'none'])\n"
+                "if name == 'nixos-rebuild': sys.exit(0)\n"
+                "if args == ['--version']:\n"
+                "    print('nix (Nix) 2.34.0')\n"
+                "elif args == ['config', 'show', 'experimental-features']:\n"
+                "    print('nix-command flakes')\n"
+                "else: sys.exit(67)\n"
+            )
+            executable.chmod(0o755)
+        env = os.environ | {"PATH": str(commands) + os.pathsep + os.environ["PATH"]}
+        for recipe in ["diff", "switch", "boot"]:
+            with self.subTest(recipe=recipe):
+                self.output.unlink(missing_ok=True)
+                result = subprocess.run(
+                    ["just", "--justfile", str(self.repo / "justfile"), recipe],
+                    cwd=self.repo,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(result.returncode, 1 if recipe == "diff" else 0, result.stderr)
+                calls = json.loads(self.output.read_text())
+                if recipe == "diff":
+                    recipe_call = next(call for call in calls if call["command"] == "nh")
+                    self.assertEqual(recipe_call["args"][:2], ["os", "build"])
+                    builds = [
+                        call
+                        for call in calls
+                        if call["command"] == "nix" and call["args"][0] == "build"
+                    ]
+                    self.assertEqual(len(builds), 1, calls)
+                    args = builds[0]["args"]
+                    source = args[1].removeprefix("path:").split("#", 1)[0]
+                else:
+                    rebuilds = [call for call in calls if call["command"] == "nixos-rebuild"]
+                    self.assertEqual(len(rebuilds), 1, calls)
+                    args = rebuilds[0]["args"]
+                    self.assertEqual(args[:2], [recipe, "--flake"])
+                    source = args[2].removeprefix("path:").split("#", 1)[0]
+                self.assertEqual(args.count("--no-update-lock-file"), 1)
+                self.assertEqual(args[args.index("--max-jobs") + 1], "2")
+                self.assertEqual(args[args.index("--cores") + 1], "4")
+                self.assertFalse(Path(source).exists())
+                self.assertEqual(lock.read_text(), '{"fixture": "pinned inputs"}')
+                self.assertEqual((self.repo / ".git/index").read_bytes(), self.index)
 
     def check_all(self, *, failed_check="", discovery_failure=False):
         commands = self.directory / "bin"

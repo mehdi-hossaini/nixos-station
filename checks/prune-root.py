@@ -28,13 +28,16 @@ class PruneTests(unittest.TestCase):
         self.root.mkdir(parents=True)
         self.paths = {5: self.mount, 256: self.root}
         self.parents = {256: 5}
+        self.flags = {5: 0, 256: 0}
         self.fds = {}
         self.deleted = []
+        self.made_writable = []
 
     def add(self, identity, parent, name):
         path = self.paths[parent] / name
         path.mkdir(parents=True)
         self.paths[identity], self.parents[identity] = path, parent
+        self.flags[identity] = 0
 
     def open(self, path, _flags):
         fd = len(self.fds) + 100
@@ -47,6 +50,12 @@ class PruneTests(unittest.TestCase):
             struct.pack_into("=Q", data, 0, identity)
         elif request == pruner.FS_INFO:
             data[16:32] = b"F" * 16
+        elif request == pruner.GET_FLAGS:
+            struct.pack_into("=Q", data, 0, self.flags[identity])
+        elif request == pruner.SET_FLAGS:
+            self.assertTrue(self.flags[identity] & pruner.READ_ONLY)
+            self.flags[identity] = struct.unpack_from("=Q", data)[0]
+            self.made_writable.append(identity)
         elif request == pruner.GET_ROOTREF:
             children = [key for key, parent in self.parents.items() if parent == identity]
             if children:
@@ -69,6 +78,7 @@ class PruneTests(unittest.TestCase):
     def delete(self, args, **_kwargs):
         identity = int(args[4])
         self.assertFalse(any(parent == identity for parent in self.parents.values()))
+        self.assertFalse(self.flags[self.parents[identity]] & pruner.READ_ONLY)
         self.assertEqual(Path(args[5]), self.mount)
         self.deleted.append(identity)
         with (
@@ -114,26 +124,67 @@ class PruneTests(unittest.TestCase):
         self.assertEqual(self.run_prune(1), 1)
         self.assertEqual(self.deleted, [256])
 
+    def test_readonly_ancestors_allow_budgeted_child_deletion_and_resume(self):
+        self.add(257, 256, "parent")
+        self.add(258, 257, "child")
+        for identity in (256, 257, 258):
+            self.flags[identity] = pruner.READ_ONLY
+        self.assertEqual(self.run_prune(1), 1)
+        self.assertEqual(self.deleted, [258])
+        self.assertEqual(self.made_writable, [256, 257])
+        self.assertTrue(self.flags[258] & pruner.READ_ONLY)
+        self.assertTrue(self.root.is_dir())
+        self.assertEqual(self.run_prune(16), 2)
+        self.assertEqual(self.deleted, [258, 257, 256])
+        self.assertFalse(self.root.exists())
+
     def test_live_root_is_never_a_valid_prune_target(self):
         with self.assertRaisesRegex(ValueError, "Only an archived root"):
             pruner.prune(self.mount, self.mount, 16)
         self.assertEqual(self.deleted, [])
+        self.assertEqual(self.made_writable, [])
 
     def test_other_filesystem_is_rejected_before_deletion(self):
+        self.flags[256] = pruner.READ_ONLY
         with (
             patch.object(pruner, "filesystem", side_effect=[b"F" * 16, b"other-filesystem"]),
             self.assertRaisesRegex(ValueError, "target filesystem"),
         ):
             self.run_prune(16)
         self.assertEqual(self.deleted, [])
+        self.assertEqual(self.made_writable, [])
 
     def test_descendant_cannot_escape_archive(self):
+        self.flags[256] = pruner.READ_ONLY
         with (
             patch.object(pruner, "child", return_value=(999, Path("../@persist"))),
             self.assertRaisesRegex(ValueError, "escapes its root"),
         ):
             self.run_prune(16)
         self.assertEqual(self.deleted, [])
+        self.assertEqual(self.made_writable, [])
+
+    def test_symlink_descendant_is_rejected_before_changing_ancestor_flags(self):
+        self.flags[256] = pruner.READ_ONLY
+        (self.root / "nested").symlink_to(self.mount, target_is_directory=True)
+        with (
+            patch.object(pruner, "child", return_value=(999, Path("nested"))),
+            self.assertRaisesRegex(ValueError, "follows a symlink"),
+        ):
+            self.run_prune(16)
+        self.assertEqual(self.deleted, [])
+        self.assertEqual(self.made_writable, [])
+
+    def test_depth_limit_is_checked_before_changing_ancestor_flags(self):
+        self.flags[256] = pruner.READ_ONLY
+        self.add(257, 256, "nested")
+        with (
+            patch.object(pruner, "MAX_DEPTH", 1),
+            self.assertRaisesRegex(ValueError, "supported depth"),
+        ):
+            self.run_prune(16)
+        self.assertEqual(self.deleted, [])
+        self.assertEqual(self.made_writable, [])
 
     def test_rootref_overflow_still_uses_the_returned_batch(self):
         self.add(257, 256, "nested")
